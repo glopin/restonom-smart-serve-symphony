@@ -15,6 +15,8 @@ import Subscriptions from "./pages/Subscriptions";
 import AppStore from "./pages/AppStore";
 import Support from "./pages/Support";
 import RestaurantTenant from "./pages/RestaurantTenant";
+import StaffLogin from "./pages/StaffLogin";
+import RestaurantDashboard from "./pages/RestaurantDashboard";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -37,6 +39,8 @@ const App = () => (
             <Route path="/uygulama-pazari" element={<AppStore />} />
             <Route path="/destek-merkezi" element={<Support />} />
             <Route path="/:slug" element={<RestaurantTenant />} />
+            <Route path="/:slug/staff-login" element={<StaffLogin />} />
+            <Route path="/:slug/dashboard" element={<RestaurantDashboard />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>
