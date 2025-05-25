@@ -1,108 +1,160 @@
 
-import { useEffect, useState } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { useAuth } from "@/hooks/useAuth";
-import { useNavigate } from "react-router-dom";
 import DashboardLayout from "@/components/DashboardLayout";
-import { supabase } from "@/integrations/supabase/client";
-import { Users, Building2, ShoppingCart, Calendar, TrendingUp, DollarSign } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useQuery } from "@tanstack/react-query";
-
-interface DashboardStats {
-  totalRestaurants: number;
-  totalOrders: number;
-  totalRevenue: number;
-  totalReservations: number;
-  totalStaff: number;
-  todayOrders: number;
-}
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
+import { Building2, Users, DollarSign, CalendarCheck, ShoppingCart, Clock } from "lucide-react";
 
 const Dashboard = () => {
-  const { user, loading } = useAuth();
-  const navigate = useNavigate();
+  const { user } = useAuth();
 
-  // Kullanıcı authentication kontrolü
-  useEffect(() => {
-    if (!loading && !user) {
-      navigate("/giris-yap");
-    }
-  }, [user, loading, navigate]);
-
-  // Dashboard istatistiklerini çek
-  const { data: stats, isLoading: statsLoading } = useQuery({
-    queryKey: ['dashboard-stats', user?.id],
-    queryFn: async (): Promise<DashboardStats> => {
-      if (!user?.id) throw new Error('User not authenticated');
-
-      // Paralel olarak tüm verileri çek
-      const [restaurants, orders, reservations, staff] = await Promise.all([
-        supabase
-          .from('restaurants')
-          .select('id')
-          .eq('owner_id', user.id),
-        supabase
-          .from('orders')
-          .select('total_amount, created_at, restaurant_id')
-          .in('restaurant_id', 
-            supabase
-              .from('restaurants')
-              .select('id')
-              .eq('owner_id', user.id)
-          ),
-        supabase
-          .from('reservations')
-          .select('id, restaurant_id')
-          .in('restaurant_id',
-            supabase
-              .from('restaurants')
-              .select('id')
-              .eq('owner_id', user.id)
-          ),
-        supabase
-          .from('restaurant_staff')
-          .select('id, restaurant_id')
-          .in('restaurant_id',
-            supabase
-              .from('restaurants')
-              .select('id')
-              .eq('owner_id', user.id)
-          )
-      ]);
-
-      const totalRestaurants = restaurants.data?.length || 0;
-      const totalOrders = orders.data?.length || 0;
-      const totalRevenue = orders.data?.reduce((sum, order) => sum + (Number(order.total_amount) || 0), 0) || 0;
-      const totalReservations = reservations.data?.length || 0;
-      const totalStaff = staff.data?.length || 0;
-
-      // Bugünkü siparişleri hesapla
-      const today = new Date().toISOString().split('T')[0];
-      const todayOrders = orders.data?.filter(order => 
-        order.created_at.startsWith(today)
-      ).length || 0;
-
-      return {
-        totalRestaurants,
-        totalOrders,
-        totalRevenue,
-        totalReservations,
-        totalStaff,
-        todayOrders
-      };
+  // Fetch user's restaurants
+  const { data: restaurants = [] } = useQuery({
+    queryKey: ['restaurants', user?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('restaurants')
+        .select('*')
+        .eq('owner_id', user?.id);
+      
+      if (error) throw error;
+      return data;
     },
     enabled: !!user?.id
   });
 
-  if (loading || !user) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Yükleniyor...</p>
-        </div>
-      </div>
-    );
-  }
+  // Fetch total orders for user's restaurants
+  const { data: totalOrders = 0 } = useQuery({
+    queryKey: ['total-orders', user?.id],
+    queryFn: async () => {
+      const restaurantIds = restaurants.map(r => r.id);
+      if (restaurantIds.length === 0) return 0;
+      
+      const { data, error } = await supabase
+        .from('orders')
+        .select('id', { count: 'exact' })
+        .in('restaurant_id', restaurantIds);
+      
+      if (error) throw error;
+      return data?.length || 0;
+    },
+    enabled: restaurants.length > 0
+  });
+
+  // Fetch total reservations for user's restaurants
+  const { data: totalReservations = 0 } = useQuery({
+    queryKey: ['total-reservations', user?.id],
+    queryFn: async () => {
+      const restaurantIds = restaurants.map(r => r.id);
+      if (restaurantIds.length === 0) return 0;
+      
+      const { data, error } = await supabase
+        .from('reservations')
+        .select('id', { count: 'exact' })
+        .in('restaurant_id', restaurantIds);
+      
+      if (error) throw error;
+      return data?.length || 0;
+    },
+    enabled: restaurants.length > 0
+  });
+
+  // Calculate total revenue from completed orders
+  const { data: totalRevenue = 0 } = useQuery({
+    queryKey: ['total-revenue', user?.id],
+    queryFn: async () => {
+      const restaurantIds = restaurants.map(r => r.id);
+      if (restaurantIds.length === 0) return 0;
+      
+      const { data, error } = await supabase
+        .from('orders')
+        .select('total_amount')
+        .in('restaurant_id', restaurantIds)
+        .eq('status', 'paid');
+      
+      if (error) throw error;
+      return data?.reduce((sum, order) => sum + (Number(order.total_amount) || 0), 0) || 0;
+    },
+    enabled: restaurants.length > 0
+  });
+
+  // Fetch total staff count
+  const { data: totalStaff = 0 } = useQuery({
+    queryKey: ['total-staff', user?.id],
+    queryFn: async () => {
+      const restaurantIds = restaurants.map(r => r.id);
+      if (restaurantIds.length === 0) return 0;
+      
+      const { data, error } = await supabase
+        .from('restaurant_staff')
+        .select('id', { count: 'exact' })
+        .in('restaurant_id', restaurantIds)
+        .eq('is_active', true);
+      
+      if (error) throw error;
+      return data?.length || 0;
+    },
+    enabled: restaurants.length > 0
+  });
+
+  // Fetch pending orders count
+  const { data: pendingOrders = 0 } = useQuery({
+    queryKey: ['pending-orders', user?.id],
+    queryFn: async () => {
+      const restaurantIds = restaurants.map(r => r.id);
+      if (restaurantIds.length === 0) return 0;
+      
+      const { data, error } = await supabase
+        .from('orders')
+        .select('id', { count: 'exact' })
+        .in('restaurant_id', restaurantIds)
+        .in('status', ['pending', 'preparing']);
+      
+      if (error) throw error;
+      return data?.length || 0;
+    },
+    enabled: restaurants.length > 0
+  });
+
+  const stats = [
+    {
+      title: "Toplam Restoran",
+      value: restaurants.length,
+      icon: Building2,
+      description: "Aktif işletme sayısı"
+    },
+    {
+      title: "Toplam Personel",
+      value: totalStaff,
+      icon: Users,
+      description: "Aktif çalışan sayısı"
+    },
+    {
+      title: "Toplam Ciro",
+      value: `₺${totalRevenue.toLocaleString('tr-TR')}`,
+      icon: DollarSign,
+      description: "Tamamlanan siparişler"
+    },
+    {
+      title: "Toplam Rezervasyon",
+      value: totalReservations,
+      icon: CalendarCheck,
+      description: "Tüm rezervasyonlar"
+    },
+    {
+      title: "Toplam Sipariş",
+      value: totalOrders,
+      icon: ShoppingCart,
+      description: "Tüm siparişler"
+    },
+    {
+      title: "Bekleyen Siparişler",
+      value: pendingOrders,
+      icon: Clock,
+      description: "Hazırlanıyor durumunda"
+    }
+  ];
 
   return (
     <DashboardLayout>
@@ -110,173 +162,96 @@ const Dashboard = () => {
         {/* Header */}
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Genel Bakış</h1>
-          <p className="text-gray-600 mt-2">
-            Restoranlarınızın performansını takip edin ve yönetin.
+          <p className="text-gray-600 mt-1">
+            Restoranlarınızın performansını takip edin
           </p>
         </div>
 
-        {/* Stats Cards */}
+        {/* Stats Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          <Card className="border-0 shadow-lg">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Toplam Restoran</CardTitle>
-              <Building2 className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {statsLoading ? "..." : stats?.totalRestaurants || 0}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Aktif restoranlarınız
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card className="border-0 shadow-lg">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Toplam Sipariş</CardTitle>
-              <ShoppingCart className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {statsLoading ? "..." : stats?.totalOrders || 0}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Tüm zamanların toplamı
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card className="border-0 shadow-lg">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Toplam Ciro</CardTitle>
-              <DollarSign className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {statsLoading ? "..." : `₺${(stats?.totalRevenue || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}`}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Tüm zamanların toplamı
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card className="border-0 shadow-lg">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Toplam Rezervasyon</CardTitle>
-              <Calendar className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {statsLoading ? "..." : stats?.totalReservations || 0}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Tüm zamanların toplamı
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card className="border-0 shadow-lg">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Toplam Personel</CardTitle>
-              <Users className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {statsLoading ? "..." : stats?.totalStaff || 0}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Aktif personel sayısı
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card className="border-0 shadow-lg">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Bugünkü Siparişler</CardTitle>
-              <TrendingUp className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {statsLoading ? "..." : stats?.todayOrders || 0}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Bugün alınan siparişler
-              </p>
-            </CardContent>
-          </Card>
+          {stats.map((stat, index) => {
+            const Icon = stat.icon;
+            return (
+              <Card key={index} className="hover:shadow-lg transition-shadow">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium text-gray-600">
+                    {stat.title}
+                  </CardTitle>
+                  <div className="h-8 w-8 rounded-full bg-primary-100 flex items-center justify-center">
+                    <Icon className="h-4 w-4 text-primary-600" />
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-gray-900">
+                    {stat.value}
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {stat.description}
+                  </p>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
 
-        {/* Quick Actions */}
+        {/* Recent Activity */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Card className="border-0 shadow-lg">
+          {/* Quick Actions */}
+          <Card>
             <CardHeader>
-              <CardTitle>Son Aktiviteler</CardTitle>
-              <CardDescription>
-                Restoranlarınızdaki son gelişmeler
-              </CardDescription>
+              <CardTitle>Hızlı İşlemler</CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {statsLoading ? (
-                  <div className="space-y-3">
-                    {[...Array(3)].map((_, i) => (
-                      <div key={i} className="animate-pulse">
-                        <div className="h-4 bg-gray-200 rounded w-3/4"></div>
-                        <div className="h-3 bg-gray-200 rounded w-1/2 mt-2"></div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-8 text-gray-500">
-                    <Calendar className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                    <p>Henüz aktivite bulunmuyor</p>
-                    <p className="text-sm">İlk restoranınızı oluşturun</p>
-                  </div>
-                )}
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="p-4 bg-primary-50 rounded-lg text-center hover:bg-primary-100 transition-colors cursor-pointer">
+                  <Building2 className="h-8 w-8 text-primary-600 mx-auto mb-2" />
+                  <p className="text-sm font-medium text-primary-700">Yeni Restoran</p>
+                </div>
+                <div className="p-4 bg-green-50 rounded-lg text-center hover:bg-green-100 transition-colors cursor-pointer">
+                  <Users className="h-8 w-8 text-green-600 mx-auto mb-2" />
+                  <p className="text-sm font-medium text-green-700">Personel Ekle</p>
+                </div>
+                <div className="p-4 bg-blue-50 rounded-lg text-center hover:bg-blue-100 transition-colors cursor-pointer">
+                  <CalendarCheck className="h-8 w-8 text-blue-600 mx-auto mb-2" />
+                  <p className="text-sm font-medium text-blue-700">Rezervasyonlar</p>
+                </div>
+                <div className="p-4 bg-purple-50 rounded-lg text-center hover:bg-purple-100 transition-colors cursor-pointer">
+                  <ShoppingCart className="h-8 w-8 text-purple-600 mx-auto mb-2" />
+                  <p className="text-sm font-medium text-purple-700">Siparişler</p>
+                </div>
               </div>
             </CardContent>
           </Card>
 
-          <Card className="border-0 shadow-lg">
+          {/* Performance Overview */}
+          <Card>
             <CardHeader>
-              <CardTitle>Hızlı İşlemler</CardTitle>
-              <CardDescription>
-                Sık kullanılan işlemlere hızlı erişim
-              </CardDescription>
+              <CardTitle>Performans Özeti</CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-4">
               <div className="space-y-3">
-                <button className="w-full text-left p-3 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors">
-                  <div className="flex items-center space-x-3">
-                    <Building2 className="h-5 w-5 text-primary-600" />
-                    <div>
-                      <div className="font-medium">Yeni Restoran Ekle</div>
-                      <div className="text-sm text-gray-500">Hızlı restoran kurulumu</div>
-                    </div>
-                  </div>
-                </button>
-                
-                <button className="w-full text-left p-3 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors">
-                  <div className="flex items-center space-x-3">
-                    <Users className="h-5 w-5 text-primary-600" />
-                    <div>
-                      <div className="font-medium">Personel Yönetimi</div>
-                      <div className="text-sm text-gray-500">Yetkilendirme ve roller</div>
-                    </div>
-                  </div>
-                </button>
-
-                <button className="w-full text-left p-3 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors">
-                  <div className="flex items-center space-x-3">
-                    <TrendingUp className="h-5 w-5 text-primary-600" />
-                    <div>
-                      <div className="font-medium">Raporları Görüntüle</div>
-                      <div className="text-sm text-gray-500">Satış ve performans analizi</div>
-                    </div>
-                  </div>
-                </button>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-600">Aktif Restoranlar</span>
+                  <span className="text-sm font-semibold">{restaurants.filter(r => r.is_active).length}/{restaurants.length}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-600">Ortalama Ciro</span>
+                  <span className="text-sm font-semibold">
+                    ₺{restaurants.length > 0 ? Math.round(totalRevenue / restaurants.length).toLocaleString('tr-TR') : 0}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-600">Personel Başına Ciro</span>
+                  <span className="text-sm font-semibold">
+                    ₺{totalStaff > 0 ? Math.round(totalRevenue / totalStaff).toLocaleString('tr-TR') : 0}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-600">Sipariş Başına Ortalama</span>
+                  <span className="text-sm font-semibold">
+                    ₺{totalOrders > 0 ? Math.round(totalRevenue / totalOrders).toLocaleString('tr-TR') : 0}
+                  </span>
+                </div>
               </div>
             </CardContent>
           </Card>
