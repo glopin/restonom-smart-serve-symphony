@@ -1,46 +1,108 @@
 
+import { useEffect, useState } from "react";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useAuth } from "@/hooks/useAuth";
+import { useNavigate } from "react-router-dom";
 import DashboardLayout from "@/components/DashboardLayout";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Building2, Users, CreditCard, Clock, TrendingUp, TrendingDown } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { Users, Building2, ShoppingCart, Calendar, TrendingUp, DollarSign } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+
+interface DashboardStats {
+  totalRestaurants: number;
+  totalOrders: number;
+  totalRevenue: number;
+  totalReservations: number;
+  totalStaff: number;
+  todayOrders: number;
+}
 
 const Dashboard = () => {
-  const stats = [
-    {
-      title: "Toplam Restoran",
-      value: "3",
-      change: "+1",
-      changeType: "increase",
-      icon: <Building2 className="h-6 w-6 text-blue-600" />
-    },
-    {
-      title: "Toplam Ciro",
-      value: "₺24,580",
-      change: "+12%",
-      changeType: "increase",
-      icon: <CreditCard className="h-6 w-6 text-green-600" />
-    },
-    {
-      title: "Aktif Personel",
-      value: "15",
-      change: "+2",
-      changeType: "increase", 
-      icon: <Users className="h-6 w-6 text-purple-600" />
-    },
-    {
-      title: "Bugünkü Sipariş",
-      value: "47",
-      change: "-5%",
-      changeType: "decrease",
-      icon: <Clock className="h-6 w-6 text-orange-600" />
-    }
-  ];
+  const { user, loading } = useAuth();
+  const navigate = useNavigate();
 
-  const recentActivity = [
-    { restaurant: "Güzel Kebapçı", action: "Yeni sipariş alındı", time: "2 dk önce", amount: "₺125" },
-    { restaurant: "Lezzet Durağı", action: "Rezervasyon onaylandı", time: "5 dk önce", amount: "4 kişi" },
-    { restaurant: "Cafe Corner", action: "Menü güncellendi", time: "12 dk önce", amount: "3 ürün" },
-    { restaurant: "Güzel Kebapçı", action: "Ödeme alındı", time: "18 dk önce", amount: "₺240" }
-  ];
+  // Kullanıcı authentication kontrolü
+  useEffect(() => {
+    if (!loading && !user) {
+      navigate("/giris-yap");
+    }
+  }, [user, loading, navigate]);
+
+  // Dashboard istatistiklerini çek
+  const { data: stats, isLoading: statsLoading } = useQuery({
+    queryKey: ['dashboard-stats', user?.id],
+    queryFn: async (): Promise<DashboardStats> => {
+      if (!user?.id) throw new Error('User not authenticated');
+
+      // Paralel olarak tüm verileri çek
+      const [restaurants, orders, reservations, staff] = await Promise.all([
+        supabase
+          .from('restaurants')
+          .select('id')
+          .eq('owner_id', user.id),
+        supabase
+          .from('orders')
+          .select('total_amount, created_at, restaurant_id')
+          .in('restaurant_id', 
+            supabase
+              .from('restaurants')
+              .select('id')
+              .eq('owner_id', user.id)
+          ),
+        supabase
+          .from('reservations')
+          .select('id, restaurant_id')
+          .in('restaurant_id',
+            supabase
+              .from('restaurants')
+              .select('id')
+              .eq('owner_id', user.id)
+          ),
+        supabase
+          .from('restaurant_staff')
+          .select('id, restaurant_id')
+          .in('restaurant_id',
+            supabase
+              .from('restaurants')
+              .select('id')
+              .eq('owner_id', user.id)
+          )
+      ]);
+
+      const totalRestaurants = restaurants.data?.length || 0;
+      const totalOrders = orders.data?.length || 0;
+      const totalRevenue = orders.data?.reduce((sum, order) => sum + (Number(order.total_amount) || 0), 0) || 0;
+      const totalReservations = reservations.data?.length || 0;
+      const totalStaff = staff.data?.length || 0;
+
+      // Bugünkü siparişleri hesapla
+      const today = new Date().toISOString().split('T')[0];
+      const todayOrders = orders.data?.filter(order => 
+        order.created_at.startsWith(today)
+      ).length || 0;
+
+      return {
+        totalRestaurants,
+        totalOrders,
+        totalRevenue,
+        totalReservations,
+        totalStaff,
+        todayOrders
+      };
+    },
+    enabled: !!user?.id
+  });
+
+  if (loading || !user) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Yükleniyor...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <DashboardLayout>
@@ -48,86 +110,172 @@ const Dashboard = () => {
         {/* Header */}
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Genel Bakış</h1>
-          <p className="text-gray-600 mt-1">Tüm restoranlarınızın özet bilgileri</p>
+          <p className="text-gray-600 mt-2">
+            Restoranlarınızın performansını takip edin ve yönetin.
+          </p>
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
-          {stats.map((stat, index) => (
-            <Card key={index} className="hover:shadow-lg transition-shadow">
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-gray-600">{stat.title}</p>
-                    <p className="text-2xl font-bold text-gray-900 mt-1">{stat.value}</p>
-                    <div className="flex items-center mt-2">
-                      {stat.changeType === 'increase' ? (
-                        <TrendingUp className="h-4 w-4 text-green-500 mr-1" />
-                      ) : (
-                        <TrendingDown className="h-4 w-4 text-red-500 mr-1" />
-                      )}
-                      <span className={`text-sm font-medium ${
-                        stat.changeType === 'increase' ? 'text-green-600' : 'text-red-600'
-                      }`}>
-                        {stat.change}
-                      </span>
-                      <span className="text-sm text-gray-500 ml-1">bu ay</span>
-                    </div>
-                  </div>
-                  <div className="bg-gray-50 p-3 rounded-lg">
-                    {stat.icon}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <Card className="border-0 shadow-lg">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Toplam Restoran</CardTitle>
+              <Building2 className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {statsLoading ? "..." : stats?.totalRestaurants || 0}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Aktif restoranlarınız
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="border-0 shadow-lg">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Toplam Sipariş</CardTitle>
+              <ShoppingCart className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {statsLoading ? "..." : stats?.totalOrders || 0}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Tüm zamanların toplamı
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="border-0 shadow-lg">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Toplam Ciro</CardTitle>
+              <DollarSign className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {statsLoading ? "..." : `₺${(stats?.totalRevenue || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}`}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Tüm zamanların toplamı
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="border-0 shadow-lg">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Toplam Rezervasyon</CardTitle>
+              <Calendar className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {statsLoading ? "..." : stats?.totalReservations || 0}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Tüm zamanların toplamı
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="border-0 shadow-lg">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Toplam Personel</CardTitle>
+              <Users className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {statsLoading ? "..." : stats?.totalStaff || 0}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Aktif personel sayısı
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="border-0 shadow-lg">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Bugünkü Siparişler</CardTitle>
+              <TrendingUp className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {statsLoading ? "..." : stats?.todayOrders || 0}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Bugün alınan siparişler
+              </p>
+            </CardContent>
+          </Card>
         </div>
 
-        {/* Recent Activity */}
+        {/* Quick Actions */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Card>
+          <Card className="border-0 shadow-lg">
             <CardHeader>
               <CardTitle>Son Aktiviteler</CardTitle>
+              <CardDescription>
+                Restoranlarınızdaki son gelişmeler
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {recentActivity.map((activity, index) => (
-                  <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                    <div className="flex-1">
-                      <p className="font-medium text-gray-900">{activity.restaurant}</p>
-                      <p className="text-sm text-gray-600">{activity.action}</p>
-                      <p className="text-xs text-gray-500">{activity.time}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-semibold text-gray-900">{activity.amount}</p>
-                    </div>
+                {statsLoading ? (
+                  <div className="space-y-3">
+                    {[...Array(3)].map((_, i) => (
+                      <div key={i} className="animate-pulse">
+                        <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+                        <div className="h-3 bg-gray-200 rounded w-1/2 mt-2"></div>
+                      </div>
+                    ))}
                   </div>
-                ))}
+                ) : (
+                  <div className="text-center py-8 text-gray-500">
+                    <Calendar className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                    <p>Henüz aktivite bulunmuyor</p>
+                    <p className="text-sm">İlk restoranınızı oluşturun</p>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="border-0 shadow-lg">
             <CardHeader>
-              <CardTitle>Hızlı Erişim</CardTitle>
+              <CardTitle>Hızlı İşlemler</CardTitle>
+              <CardDescription>
+                Sık kullanılan işlemlere hızlı erişim
+              </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-2 gap-4">
-                <button className="p-4 bg-primary-50 hover:bg-primary-100 rounded-lg text-center transition-colors">
-                  <Building2 className="h-8 w-8 text-primary-600 mx-auto mb-2" />
-                  <p className="text-sm font-medium text-primary-700">Yeni Restoran</p>
+              <div className="space-y-3">
+                <button className="w-full text-left p-3 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors">
+                  <div className="flex items-center space-x-3">
+                    <Building2 className="h-5 w-5 text-primary-600" />
+                    <div>
+                      <div className="font-medium">Yeni Restoran Ekle</div>
+                      <div className="text-sm text-gray-500">Hızlı restoran kurulumu</div>
+                    </div>
+                  </div>
                 </button>
-                <button className="p-4 bg-green-50 hover:bg-green-100 rounded-lg text-center transition-colors">
-                  <Users className="h-8 w-8 text-green-600 mx-auto mb-2" />
-                  <p className="text-sm font-medium text-green-700">Personel Ekle</p>
+                
+                <button className="w-full text-left p-3 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors">
+                  <div className="flex items-center space-x-3">
+                    <Users className="h-5 w-5 text-primary-600" />
+                    <div>
+                      <div className="font-medium">Personel Yönetimi</div>
+                      <div className="text-sm text-gray-500">Yetkilendirme ve roller</div>
+                    </div>
+                  </div>
                 </button>
-                <button className="p-4 bg-orange-50 hover:bg-orange-100 rounded-lg text-center transition-colors">
-                  <CreditCard className="h-8 w-8 text-orange-600 mx-auto mb-2" />
-                  <p className="text-sm font-medium text-orange-700">Raporlar</p>
-                </button>
-                <button className="p-4 bg-purple-50 hover:bg-purple-100 rounded-lg text-center transition-colors">
-                  <Clock className="h-8 w-8 text-purple-600 mx-auto mb-2" />
-                  <p className="text-sm font-medium text-purple-700">Ayarlar</p>
+
+                <button className="w-full text-left p-3 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors">
+                  <div className="flex items-center space-x-3">
+                    <TrendingUp className="h-5 w-5 text-primary-600" />
+                    <div>
+                      <div className="font-medium">Raporları Görüntüle</div>
+                      <div className="text-sm text-gray-500">Satış ve performans analizi</div>
+                    </div>
+                  </div>
                 </button>
               </div>
             </CardContent>

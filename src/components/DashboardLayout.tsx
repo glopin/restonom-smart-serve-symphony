@@ -13,6 +13,8 @@ import {
 } from "lucide-react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useState } from "react";
+import { useAuth } from "@/hooks/useAuth";
+import { useToast } from "@/hooks/use-toast";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -22,6 +24,8 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
   const location = useLocation();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const { user, signOut } = useAuth();
+  const { toast } = useToast();
 
   const menuItems = [
     { 
@@ -56,9 +60,22 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
     }
   ];
 
-  const handleLogout = () => {
-    // TODO: Supabase logout
-    navigate("/");
+  const handleLogout = async () => {
+    try {
+      await signOut();
+      toast({
+        title: "Çıkış yapıldı",
+        description: "Başarıyla çıkış yapıldı.",
+      });
+      navigate("/");
+    } catch (error) {
+      console.error("Logout error:", error);
+      toast({
+        title: "Hata",
+        description: "Çıkış yaparken bir hata oluştu.",
+        variant: "destructive",
+      });
+    }
   };
 
   return (
@@ -128,8 +145,10 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
                     <User className="h-4 w-4 text-white" />
                   </div>
                   <div className="text-sm">
-                    <div className="font-medium text-gray-900">Admin User</div>
-                    <div className="text-gray-500">admin@restonom.com</div>
+                    <div className="font-medium text-gray-900">
+                      {user?.user_metadata?.first_name} {user?.user_metadata?.last_name}
+                    </div>
+                    <div className="text-gray-500">{user?.email}</div>
                   </div>
                 </div>
               </Card>
