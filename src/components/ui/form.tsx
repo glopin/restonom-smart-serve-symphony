@@ -7,25 +7,17 @@ import {
   FieldPath,
   FieldValues,
   FormProvider,
-  useFormContext,
+  // useFormContext, // No longer directly used here, but in form.hooks.ts
 } from "react-hook-form"
 
 import { cn } from "@/lib/utils"
 import { Label } from "@/components/ui/label"
+import { FormFieldContext, FormItemContext } from "./form.context" // Import contexts
+import { useFormField } from "./form.hooks" // Import hook
 
 const Form = FormProvider
 
-type FormFieldContextValue<
-  TFieldValues extends FieldValues = FieldValues,
-  TName extends FieldPath<TFieldValues> = FieldPath<TFieldValues>
-> = {
-  name: TName
-}
-
-const FormFieldContext = React.createContext<FormFieldContextValue>(
-  {} as FormFieldContextValue
-)
-
+// FormField definition remains here as it uses FormFieldContext
 const FormField = <
   TFieldValues extends FieldValues = FieldValues,
   TName extends FieldPath<TFieldValues> = FieldPath<TFieldValues>
@@ -39,36 +31,9 @@ const FormField = <
   )
 }
 
-const useFormField = () => {
-  const fieldContext = React.useContext(FormFieldContext)
-  const itemContext = React.useContext(FormItemContext)
-  const { getFieldState, formState } = useFormContext()
+// useFormField has been moved to form.hooks.ts
 
-  const fieldState = getFieldState(fieldContext.name, formState)
-
-  if (!fieldContext) {
-    throw new Error("useFormField should be used within <FormField>")
-  }
-
-  const { id } = itemContext
-
-  return {
-    id,
-    name: fieldContext.name,
-    formItemId: `${id}-form-item`,
-    formDescriptionId: `${id}-form-item-description`,
-    formMessageId: `${id}-form-item-message`,
-    ...fieldState,
-  }
-}
-
-type FormItemContextValue = {
-  id: string
-}
-
-const FormItemContext = React.createContext<FormItemContextValue>(
-  {} as FormItemContextValue
-)
+// FormItemContext has been moved to form.context.ts
 
 const FormItem = React.forwardRef<
   HTMLDivElement,
@@ -165,7 +130,7 @@ const FormMessage = React.forwardRef<
 FormMessage.displayName = "FormMessage"
 
 export {
-  useFormField,
+  // useFormField, // Should be imported from form.hooks.ts by consumers
   Form,
   FormItem,
   FormLabel,
@@ -174,3 +139,4 @@ export {
   FormMessage,
   FormField,
 }
+// useFormField is no longer exported from this file
