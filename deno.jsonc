@@ -1,0 +1,17 @@
+{
+  "tasks": {
+    "build:css": "npx tailwindcss -c ./deno-tailwind.config.ts -i ./deno-src/index.css -o ./deno-public/style.css",
+    "dev": "deno task build:css && deno run --allow-net --allow-read --allow-write --allow-env --allow-run dev.ts",
+    "bundle": "deno run --allow-read --allow-write --allow-run deps.ts"
+  },
+  "compilerOptions": {
+    "lib": ["dom", "dom.iterable", "dom.asynciterable", "deno.ns"],
+    "jsx": "react-jsx",
+    "jsxImportSource": "react"
+  },
+  "fmt": {
+    "files": {
+      "include": ["deno-src/", "deno-public/", "dev.ts", "deps.ts"]
+    }
+  }
+}
