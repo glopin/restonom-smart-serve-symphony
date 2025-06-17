@@ -26,7 +26,7 @@ interface StaffSession {
   role: string;
   name: string;
   is_manager?: boolean;
-  permissions?: any;
+  permissions?: unknown;
 }
 
 const RestaurantDashboard = () => {

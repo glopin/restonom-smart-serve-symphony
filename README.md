@@ -36,6 +36,24 @@ npm i
 npm run dev
 ```
 
+## Environment Variable Setup
+
+This project requires certain environment variables to be set for features like Supabase integration to work correctly.
+
+1.  **Copy the example environment file:**
+    ```sh
+    cp .env.example .env
+    ```
+2.  **Edit the `.env` file:**
+    Open the newly created `.env` file and replace the placeholder values with your actual credentials.
+    ```
+    SUPABASE_URL="YOUR_SUPABASE_URL"
+    SUPABASE_KEY="YOUR_SUPABASE_PUBLISHABLE_KEY"
+    ```
+    You can find these values in your Supabase project settings.
+
+**Important:** The `.env` file is included in `.gitignore` and should not be committed to the repository.
+
 **Edit a file directly in GitHub**
 
 - Navigate to the desired file(s).

@@ -9,7 +9,6 @@ import {
   Calendar, 
   BarChart3, 
   Shield, 
-  Smartphone,
   CheckCircle,
   ArrowRight,
   Star

@@ -6,12 +6,10 @@ import { Button } from "@/components/ui/button";
 import { MapPin, Phone, Clock, Star, QrCode, Calendar, ChefHat } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { useState } from "react";
 
 const RestaurantTenant = () => {
   const { slug } = useParams();
   const navigate = useNavigate();
-  const [showStaffLogin, setShowStaffLogin] = useState(false);
 
   // Fetch restaurant by slug
   const { data: restaurant, isLoading: restaurantLoading } = useQuery({
